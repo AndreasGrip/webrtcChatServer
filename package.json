@@ -1,0 +1,30 @@
+{
+  "name": "websocket_server",
+  "version": "1.0.0",
+  "description": "Just a very basic websocket server, bare bones to in order to be easy to manipulate and use for diffrent things.",
+  "main": "server.js",
+  "dependencies": {
+    "ws": "^7.4.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndreasGrip/Websocket_server.git"
+  },
+  "keywords": [
+    "websocket",
+    "ws",
+    "websocket-server",
+    "ws-server"
+  ],
+  "author": "Andreas Grip",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/AndreasGrip/Websocket_server/issues"
+  },
+  "homepage": "https://github.com/AndreasGrip/Websocket_server#readme"
+}
