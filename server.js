@@ -37,6 +37,7 @@ function connection(ws) {
   // ws.ping(() => {});
   ws.send("Wellcome to server.");
   ws.on("close", onClose);
+  ws.on("pong", onPong);
   ws.isAlive = new Date();
   ws.allClients = this.clients;
   ws.pingpong = (ws) => {
@@ -90,4 +91,10 @@ function onError(error) {
 function onClose(ws) {
   console.log("Closed connection");
   clearInterval(ws.timer);
+}
+function onPong() {
+  this.isAlive = new Date();
+  console.log(
+    this.id + " receive a pong : " + " " + this.isAlive.toUTCString()
+  );
 }
