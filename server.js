@@ -1,5 +1,11 @@
 const WebSocket = require("ws");
 
+const serverSettings = {
+  serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
+  timout: 30 // if the server don't get a ping respons from client in this number of seconds connection will be terminated.
+
+}
+
 const wssettings = {
   port: 8080,
   perMessageDeflate: {
@@ -30,34 +36,23 @@ let cnxId = 0;
 wss.on("connection", connection);
 
 function connection(ws) {
-  console.log("connected");
+  // setup the connection
   ws.id = "cnx" + ++cnxId;
+  ws.username = "user_" + cnxId;
+  console.log(ws.id + "/" + ws.username + ": connected");
   ws.on("message", onMessage);
   ws.on("error", onError);
-  // ws.ping(() => {});
-  ws.send("Wellcome to server.");
   ws.on("close", onClose);
   ws.on("pong", onPong);
   ws.isAlive = new Date();
   ws.allClients = this.clients;
-  ws.pingpong = (ws) => {
-    let lastAlive = new Date() - ws.isAlive;
-    console.log(ws.id + " send a ping");
-    if (lastAlive > 30000) {
-      console.log('lastAlive:' + lastAlive)
-      clearInterval(ws.timer);
-      // connection is dead
-      ws.terminate();
-    } else {
-      ws.ping();
-      console.log('Alive:' + lastAlive);
-    }
-  
-  };
+  ws.pingpong = pingpong;
   // start keepalive check.
   ws.timer = setInterval(function () {
-    ws.pingpong(ws);
+    ws.pingpong();
   }, 1000);
+
+  ws.send("Wellcome to " + serverSettings.serverName + " you are assigned username " + ws.username);
 }
 
 function onMessage(message) {
@@ -79,7 +74,7 @@ function onMessage(message) {
         ")"
     );
   } else {
-    console.log("received: %s", message);
+    console.log("received: " + message);
     this.send("You sent: " + message);
   }
 }
@@ -88,13 +83,34 @@ function onError(error) {
   console.log("Error: " + JSON.stringify(error));
 }
 
-function onClose(ws) {
-  console.log("Closed connection");
-  clearInterval(ws.timer);
+function onClose() {
+  console.log("Closed connection " + this.id);
+  // kill the checkalive timer
+  clearInterval(this.timer);
 }
+
+// Whenever we get a respons from ping
 function onPong() {
   this.isAlive = new Date();
-  console.log(
-    this.id + " receive a pong : " + " " + this.isAlive.toUTCString()
-  );
+  console.debug(this.id + " receive a pong : " + " " + this.isAlive.toUTCString());
+}
+
+// Check if we have recived a pong for 30seconds. If so send a ping, otherwise terminate the connection.
+function pingpong() {
+  // Calculate how long since last pong.
+  let lastAlive = new Date() - this.isAlive;
+  const timoutThreshold = serverSettings.timout * 1000;
+  console.log(this.id + " send a ping");
+  // Check if more than 30seconds since last pong
+  if (lastAlive > timoutThreshold) {
+    console.log(this.id + "/" + this.username + ": ms since last pong:" + lastAlive + " above threshold of " + timoutThreshold + " will terminate connection.");
+    // kill the timer
+    clearInterval(this.timer);
+    // Terminate the connection
+    this.terminate();
+  } else {
+    // Send new ping
+    this.ping();
+    console.log(this.id + "/" + this.username + ": ms since last pong:" + lastAlive + " below threshold of " + timoutThreshold + '.');
+  }
 }
