@@ -4,9 +4,14 @@
   "description": "Just a very basic websocket server, bare bones to in order to be easy to manipulate and use for diffrent things.",
   "main": "server.js",
   "dependencies": {
+    "g_usermanagent": "file:../g_usermanagent",
     "ws": "^7.4.2"
   },
-  "devDependencies": {},
+  "nodemonConfig": {
+    "ignore": [
+      "userDb.json"
+    ]
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
