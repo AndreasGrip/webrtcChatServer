@@ -4,6 +4,7 @@
   "description": "Just a very basic websocket server, bare bones to in order to be easy to manipulate and use for diffrent things.",
   "main": "server.js",
   "dependencies": {
+    "dotenv": "^16.0.1",
     "g_usermanagent": "file:../g_usermanagent",
     "ws": "^7.4.2"
   },
