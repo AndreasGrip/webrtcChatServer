@@ -1,6 +1,8 @@
 require('dotenv').config();
 const WebSocket = require('ws');
-const g_users = require('g_usermanagement');
+//const g_users = require('../g_usermanagent/g_usermanagement');
+const g_users = require('g_usermanagent');
+
 
 const serverSettings = {
   serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
@@ -97,8 +99,13 @@ function onMessage(message) {
             }
             break;
           case 'adduser':
-            logincredentials = this.wss.user.userAdd(user, pass);
+            if(this.user.nickname) {
+              logincredentials = this.wss.users.userAdd(user, pass);
+            } else {
+              logincredentials = 'require user to be logged in.'
+            }
         }
+
         this.send(command + ': ' + logincredentials);
       }
       break;
@@ -106,6 +113,8 @@ function onMessage(message) {
       this.send('pong(' + argument + ')');
       console.log(`${this.id}/${this.user.nickname}: responding pong(${argument})`);
     default:
+      this.send('unknown command: ' + command)
+      console.log(`${this.id}/${this.user.nickname}: unknown command ${command} ${argument}`);
   }
 }
 
