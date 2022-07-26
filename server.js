@@ -3,7 +3,6 @@ const WebSocket = require('ws');
 //const g_users = require('../g_usermanagent/g_usermanagement');
 const g_users = require('g_usermanagent');
 
-
 const serverSettings = {
   serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
   timout: 30, // if the server don't get a ping response from client in this number of seconds connection will be terminated.
@@ -62,7 +61,8 @@ function connection(ws) {
 }
 
 function onMessage(message) {
-  const regex = /^(\w+):\ ((\w|\ )+)/i;
+  //const regex = /^(\w+):\ ((\w|\ )?)/i;
+  const regex = /^(\w+)\s?(.*)*/i;
   const messageSplit = message.match(regex);
   const command = messageSplit && messageSplit[1];
   const argument = messageSplit && messageSplit[2];
@@ -72,49 +72,53 @@ function onMessage(message) {
   } else {
     this.send('You sent: ' + message);
   }
-  switch (command) {
-    case 'broadcast':
-      this.allClients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(`${command}: ${argument}`);
-        }
-      });
-      break;
-    case 'login':
-    case 'adduser':
-      if (arguments && arguments.length === 2) {
-        const user = arguments[0];
-        const pass = arguments[1];
-        let logincredentials;
-        switch (command) {
-          case 'login':
-            logincredentials = this.wss.users.userLogin(user, pass);
-            logincredentialsObj = tryParseJSON(logincredentials);
-            if (logincredentialsObj && logincredentialsObj.userName) {
-              this.wss.users.usersLoggedIn.push(this);
-              this.user.nickname = logincredentialsObj.userName;
-              this.send('Succesfully logged in as ' + user);
-            } else {
-              this.send('Failed to login as ' + user);
-            }
-            break;
-          case 'adduser':
-            if(this.user.nickname) {
-              logincredentials = this.wss.users.userAdd(user, pass);
-            } else {
-              logincredentials = 'require user to be logged in.'
-            }
-        }
+  if (command) {
+    switch (command) {
+      case 'broadcast':
+        this.allClients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(`${command}: ${argument}`);
+          }
+        });
+        break;
+      case 'login':
+      case 'adduser':
+        if (arguments && arguments.length === 2) {
+          const user = arguments[0];
+          const pass = arguments[1];
+          let logincredentials;
+          switch (command) {
+            case 'login':
+              logincredentials = this.wss.users.userLogin(user, pass);
+              logincredentialsObj = tryParseJSON(logincredentials);
+              if (logincredentialsObj && logincredentialsObj.userName) {
+                this.wss.users.usersLoggedIn.push(this);
+                this.user.nickname = logincredentialsObj.userName;
+                this.send('Succesfully logged in as ' + user);
+              } else {
+                this.send('Failed to login as ' + user);
+              }
+              break;
+            case 'adduser':
+              if (this.user.nickname) {
+                logincredentials = this.wss.users.userAdd(user, pass);
+              } else {
+                logincredentials = 'require user to be logged in.';
+              }
+          }
 
-        this.send(command + ': ' + logincredentials);
-      }
-      break;
-    case 'ping':
-      this.send('pong(' + argument + ')');
-      console.log(`${this.id}/${this.user.nickname}: responding pong(${argument})`);
-    default:
-      this.send('unknown command: ' + command)
-      console.log(`${this.id}/${this.user.nickname}: unknown command ${command} ${argument}`);
+          this.send(command + ': ' + logincredentials);
+        }
+        break;
+      case 'ping':
+        arguments.pop()
+        this.send('pong(' + argument + ')' + arguments.join(' '));
+        console.log(`${this.id}/${this.user.nickname}: responding pong(${argument}) ${arguments.join(' ')}`);
+        break;
+      default:
+        this.send('unknown command: ' + command);
+        console.log(`${this.id}/${this.user.nickname}: unknown command ${command} ${arguments.join(' ')}`);
+    }
   }
 }
 
