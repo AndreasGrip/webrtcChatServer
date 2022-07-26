@@ -2,11 +2,15 @@ require('dotenv').config();
 const WebSocket = require('ws');
 //const g_users = require('../g_usermanagent/g_usermanagement');
 const g_users = require('g_usermanagent');
+const gWinston = require("griffinwinston");
+const logger = new gWinston();
 
 const serverSettings = {
   serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
   timout: 30, // if the server don't get a ping response from client in this number of seconds connection will be terminated.
 };
+
+logger.debug('serverSettings: ' + JSON.stringify(serverSettings))
 
 const wssettings = {
   port: 8080,
@@ -30,11 +34,15 @@ const wssettings = {
     // should not be compressed.
   },
 };
+logger.debug('wssettings: ' + JSON.stringify(wssettings))
 
+logger.debug('starting websocket server');
 const wss = new WebSocket.Server(wssettings);
+logger.debug('setup users');
 wss.users = new g_users();
 
 let cnxId = 0;
+logger.debug('cnxId: ' + cnxId)
 
 wss.on('connection', connection);
 
@@ -42,15 +50,16 @@ function connection(ws) {
   // setup the connection
   ws.id = 'cnx' + ++cnxId;
   ws.user = { nickname: 'user_' + cnxId };
-  console.log(ws.id + '/' + ws.user.nickname + ': connected');
+  logger.info(ws.id + '/' + ws.user.nickname + ': connected');
   ws.on('message', onMessage);
   ws.on('error', onError);
   ws.on('close', onClose);
   ws.on('pong', onPong);
   ws.isAlive = new Date();
-  ws.allClients = this.clients;
-  ws.wss = this;
-  ws.pingpong = pingpong;
+  logger.debug('ws.id:' + ws.id + ' isAlive: ' + ws.isAlive )
+  ws.wss = this; // this will not be available for internal funtions, so attach it to ws.
+  ws.allClients = this.clients; 
+  ws.pingpong = pingpong; // custom function
   this.timeouts = 0;
   // start keepalive check.
   ws.timer = setInterval(function () {
@@ -68,7 +77,7 @@ function onMessage(message) {
   const argument = messageSplit && messageSplit[2];
   const arguments = messageSplit && messageSplit[2] && messageSplit[2].split(' ');
   if (command) {
-    console.log(`${this.id}/${this.user.nickname}: received ${command}: ${argument}`);
+    logger.info(`${this.id}/${this.user.nickname}: received ${command}: ${argument}`);
   } else {
     this.send('You sent: ' + message);
   }
@@ -113,24 +122,26 @@ function onMessage(message) {
       case 'ping':
         arguments.pop()
         this.send('pong(' + argument + ')' + arguments.join(' '));
-        console.log(`${this.id}/${this.user.nickname}: responding pong(${argument}) ${arguments.join(' ')}`);
+        logger.info(`${this.id}/${this.user.nickname}: responding pong(${argument}) ${arguments.join(' ')}`);
         break;
       default:
         this.send('unknown command: ' + command);
-        console.log(`${this.id}/${this.user.nickname}: unknown command ${command} ${arguments.join(' ')}`);
+        logger.info(`${this.id}/${this.user.nickname}: unknown command ${command} ${arguments.join(' ')}`);
     }
   }
 }
 
 function onError(error) {
-  console.log('Error: ' + JSON.stringify(error));
+  logger.error('Error: ' + JSON.stringify(error));
 }
 
 function onClose() {
-  console.log('Closed connection ' + this.id);
+  logger.info('Closed connection ' + this.id);
   // remove user from login
+  logger.debug(this.id + ' removed from usersLoggedIn')
   this.wss.users.usersLoggedIn = this.wss.users.usersLoggedIn.filter((a) => a.id != this.id);
   // kill the checkalive timer
+  logger.debug(this.id + ' removed keepalive timer')
   clearInterval(this.timer);
 }
 
@@ -149,11 +160,12 @@ function pingpong() {
   // Check if more than 30seconds since last pong
   if (lastAlive > timoutThreshold) {
     if (++this.timeouts >= 5) {
-      console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timoutThreshold + ' will terminate connection.');
+      logger.info(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timoutThreshold + ' will terminate connection.');
       // kill the timer
+      logger.debug(this.id + ' removed keepalive timer')
       clearInterval(this.timer);
       // Terminate the connection
-
+      logger.debug(this.id + ' terminate connection')
       this.terminate();
     } else {
       // console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timoutThreshold + ' timeouts: ' + this.timeouts);
