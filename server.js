@@ -70,12 +70,13 @@ function connection(ws) {
 }
 
 function onMessage(message) {
-  //const regex = /^(\w+):\ ((\w|\ )?)/i;
-  const regex = /^(\w+)\s?(.*)*/i;
-  const messageSplit = message.match(regex);
+  // const regex = /^(\w+):\ ((\w|\ )?)/i;
+  // const regex = /^\/(\w+)\s?(.*)*/i;
+  const regEx = /^\/(\w+)((\s(\S*))+)?/i
+  const messageSplit = message.match(regEx);
   const command = messageSplit && messageSplit[1];
-  const argument = messageSplit && messageSplit[2];
-  const arguments = messageSplit && messageSplit[2] && messageSplit[2].split(' ');
+  const argument = messageSplit && messageSplit[2] ? messageSplit[2] : '';
+  const arguments = messageSplit && messageSplit[2] ? messageSplit[2].split(' ') : [];
   if (command) {
     logger.info(`${this.id}/${this.user.nickname}: received ${command}: ${argument}`);
   } else {
