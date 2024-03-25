@@ -5,7 +5,7 @@
   "main": "server.js",
   "dependencies": {
     "dotenv": "^16.0.1",
-    "g_usermanagent": "file:../g_usermanagent",
+    "g_usermanagent": "^0.3.2",
     "griffinwinston": "^0.9.2",
     "ws": "^7.4.2"
   },
