@@ -2,16 +2,25 @@ require('dotenv').config();
 const WebSocket = require('ws');
 //const g_users = require('../g_usermanagent/g_usermanagement');
 const g_users = require('g_usermanagent');
-const gWinston = require("griffinwinston");
+const gWinston = require('griffinwinston');
 const logger = new gWinston();
 
+// the same as JSON.parse(JSON.strigify(obj))
+function objCopy(obj) {
+  const s = JSON.stringify(obj);
+  const o = JSON.parse(s);
+  return o;
+}
+
+// default server settings
 const serverSettings = {
   serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
-  timout: 30, // if the server don't get a ping response from client in this number of seconds connection will be terminated.
+  timeout: 30, // if the server don't get a ping response from client in this number of seconds connection will be terminated.
 };
 
-logger.debug('serverSettings: ' + JSON.stringify(serverSettings))
+logger.debug('serverSettings: ' + JSON.stringify(serverSettings));
 
+// default ws settings (port should be changed)
 const wssettings = {
   port: 8080,
   perMessageDeflate: {
@@ -34,15 +43,45 @@ const wssettings = {
     // should not be compressed.
   },
 };
-logger.debug('wssettings: ' + JSON.stringify(wssettings))
+logger.debug('wssettings: ' + JSON.stringify(wssettings));
+
+class chatserver {
+  constructor(settings = {}) {
+    if (!settings?.serverSettings) settings.serverSettings = serverSettings;
+  }
+}
 
 logger.debug('starting websocket server');
 const wss = new WebSocket.Server(wssettings);
+
 logger.debug('setup users');
-wss.users = new g_users();
+const users = new g_users();
+wss.users = users;
+
+wss.clientsArray = [];
+
+const channels = [];
+
+class channel {
+  constructor(name, owner) {
+    this.name = name;
+    this.owner = owner;
+    this.topic = '';
+    //https://www.unrealircd.org/docs/Channel_modes
+    this.modes = {
+      inviteonly: false, // only people invited can join
+      key: false, // password to join
+      limit: 0, // Limit the amount of users that may be in the channel.
+      moderated: false, //Only people with +v or higher (+vhoaq) may speak.
+      private: false, // Private channel. Partially conceals the existence of the channel. Users cannot see this channel name unless they are a member of it. For example, if you WHOIS a user who is on a +p channel, this channel is omitted from the response
+      regonly: true, // Only registered users may join the channel. Registered users are users authenticated t
+    };
+    this.users = [];
+  }
+}
 
 let cnxId = 0;
-logger.debug('cnxId: ' + cnxId)
+logger.debug('cnxId: ' + cnxId);
 
 wss.on('connection', connection);
 
@@ -56,9 +95,11 @@ function connection(ws) {
   ws.on('close', onClose);
   ws.on('pong', onPong);
   ws.isAlive = new Date();
-  logger.debug('ws.id:' + ws.id + ' isAlive: ' + ws.isAlive )
-  ws.wss = this; // this will not be available for internal funtions, so attach it to ws.
-  ws.allClients = this.clients; 
+  logger.debug('ws.id:' + ws.id + ' isAlive: ' + ws.isAlive);
+  ws.wss = this; // this will not be available for internal functions, so attach it to ws.
+  ws.allClients = this.clients;
+  ws.allClientsArray = this.clientsArray;
+  this.clientsArray.push(ws);
   ws.pingpong = pingpong; // custom function
   this.timeouts = 0;
   // start keepalive check.
@@ -66,17 +107,18 @@ function connection(ws) {
     ws.pingpong();
   }, 1000);
 
-  ws.send('Wellcome to ' + serverSettings.serverName + ' you are assigned nickname ' + ws.user.nickname);
+  ws.send('Welcome to ' + serverSettings.serverName + ' you are assigned nickname ' + ws.user.nickname);
 }
 
 function onMessage(message) {
   // const regex = /^(\w+):\ ((\w|\ )?)/i;
   // const regex = /^\/(\w+)\s?(.*)*/i;
-  const regEx = /^\/(\w+)((\s(\S*))+)?/i
+  const regEx = /^\/(\w+)((\s(\S*))+)?/i;
   const messageSplit = message.match(regEx);
   const command = messageSplit && messageSplit[1];
-  const argument = messageSplit && messageSplit[2] ? messageSplit[2] : '';
-  const arguments = messageSplit && messageSplit[2] ? messageSplit[2].split(' ') : [];
+  // slice is to remove first whitespace
+  const argument = messageSplit && messageSplit[2] ? messageSplit[2].slice(1) : '';
+  const argumentsList = argument !== '' ? argument.split(' ') : [];
   if (command) {
     logger.info(`${this.id}/${this.user.nickname}: received ${command}: ${argument}`);
   } else {
@@ -87,47 +129,82 @@ function onMessage(message) {
       case 'broadcast':
         this.allClients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
-            client.send(`${command}: ${argument}`);
+            client.send(`${command} from ${this.user.nickname}: ${argument}`);
           }
         });
         break;
+
+      case 'msg':
+        const destUserName = argumentsList.shift();
+        const destUser = this.allClientsArray.filter((c) => c.user.nickname === destUserName);
+        if (destUser.length > 0) {
+          destUser.forEach((user) => user.send(`@${this.user.nickname}: ${argumentsList.join(' ')}`));
+          //this.send(`${destUserName}: ${argumentsList.join(' ')}`);
+        } else {
+          this.send(`No user called '${destUserName}' is not connected.`);
+        }
+        break;
       case 'login':
       case 'adduser':
-        if (arguments && arguments.length === 2) {
-          const user = arguments[0];
-          const pass = arguments[1];
-          let logincredentials;
+        if (argumentsList && argumentsList.length === 2) {
+          const user = argumentsList[0];
+          const pass = argumentsList[1];
+          let loginCredentials;
           switch (command) {
             case 'login':
-              logincredentials = this.wss.users.userLogin(user, pass);
-              logincredentialsObj = tryParseJSON(logincredentials);
-              if (logincredentialsObj && logincredentialsObj.userName) {
+              loginCredentials = this.wss.users.userLogin(user, pass);
+              loginCredentialsObj = tryParseJSON(loginCredentials);
+              if (loginCredentialsObj && loginCredentialsObj.userName) {
                 this.wss.users.usersLoggedIn.push(this);
-                this.user.nickname = logincredentialsObj.userName;
-                this.send('Succesfully logged in as ' + user);
+                this.user.nickname = loginCredentialsObj.userName;
+                this.send('Successfully logged in as ' + user);
               } else {
                 this.send('Failed to login as ' + user);
               }
               break;
             case 'adduser':
               if (this.user.nickname) {
-                logincredentials = this.wss.users.userAdd(user, pass);
+                loginCredentials = this.wss.users.userAdd(user, pass);
               } else {
-                logincredentials = 'require user to be logged in.';
+                loginCredentials = 'require user to be logged in.';
               }
           }
 
-          this.send(command + ': ' + logincredentials);
+          this.send(command + ': ' + loginCredentials);
         }
         break;
       case 'ping':
-        arguments.pop()
-        this.send('pong(' + argument + ')' + arguments.join(' '));
-        logger.info(`${this.id}/${this.user.nickname}: responding pong(${argument}) ${arguments.join(' ')}`);
+        argumentsList.pop();
+        this.send('pong(' + argument + ')' + argumentsList.join(' '));
+        logger.info(`${this.id}/${this.user.nickname}: responding pong(${argument}) ${argumentsList.join(' ')}`);
         break;
+      case 'users':
+        if (!this.user.nickname) {
+          this.send(command + ' requires user to be logged in.');
+        } else {
+          switch (command) {
+            case 'users':
+              console.log('ab');
+              const clients = [];
+              this.allClients.forEach((t) => clients.push(t.user.nickname));
+              this.send(clients.join(','));
+          }
+        }
+        break;
+      case 'help':
+        let helpText = '';
+        this.send('');
+        this.send('Available commands are');
+        this.send('broadcast [message] - Broadcast a message to all connected clients');
+        this.send('login [username] [password] - Log in as a user');
+        this.send('adduser [username] [password] - Add a new user');
+        this.send('ping - measure latency towards server');
+        this.send('');
+        break;
+
       default:
         this.send('unknown command: ' + command);
-        logger.info(`${this.id}/${this.user.nickname}: unknown command ${command} ${arguments.join(' ')}`);
+        logger.info(`${this.id}/${this.user.nickname}: unknown command ${command} ${argumentsList.join(' ')}`);
     }
   }
 }
@@ -139,44 +216,46 @@ function onError(error) {
 function onClose() {
   logger.info('Closed connection ' + this.id);
   // remove user from login
-  logger.debug(this.id + ' removed from usersLoggedIn')
-  this.wss.users.usersLoggedIn = this.wss.users.usersLoggedIn.filter((a) => a.id != this.id);
-  // kill the checkalive timer
-  logger.debug(this.id + ' removed keepalive timer')
+  logger.debug(this.id + ' removed from usersLoggedIn');
+  //this.wss.users.usersLoggedIn = this.wss.users.usersLoggedIn.filter((a) => a.id != this.id);
+  this.wss.users.usersLoggedIn.splice(this);
+  // kill the check alive timer
+  logger.debug(this.id + ' removed keepalive timer');
   clearInterval(this.timer);
+  this.allClientsArray.splice(this, 1);
 }
 
-// Whenever we get a respons from ping
+// Whenever we get a response from ping
 function onPong() {
   this.isAlive = new Date();
   // console.debug(this.id + ' receive a pong : ' + ' ' + this.isAlive.toUTCString());
 }
 
-// Check if we have recived a pong for 30seconds. If so send a ping, otherwise terminate the connection.
+// Check if we have received a pong for 30seconds. If so send a ping, otherwise terminate the connection.
 function pingpong() {
   // Calculate how long since last pong.
   let lastAlive = new Date() - this.isAlive;
-  const timoutThreshold = serverSettings.timout * 1000;
+  const timeoutThreshold = serverSettings.timeout * 1000;
   // console.log(this.id + ' send a ping');
   // Check if more than 30seconds since last pong
-  if (lastAlive > timoutThreshold) {
+  if (lastAlive > timeoutThreshold) {
     if (++this.timeouts >= 5) {
-      logger.info(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timoutThreshold + ' will terminate connection.');
+      logger.info(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timeoutThreshold + ' will terminate connection.');
       // kill the timer
-      logger.debug(this.id + ' removed keepalive timer')
+      logger.debug(this.id + ' removed keepalive timer');
       clearInterval(this.timer);
       // Terminate the connection
-      logger.debug(this.id + ' terminate connection')
+      logger.debug(this.id + ' terminate connection');
       this.terminate();
     } else {
-      // console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timoutThreshold + ' timeouts: ' + this.timeouts);
+      // console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' above threshold of ' + timeoutThreshold + ' timeouts: ' + this.timeouts);
       this.ping();
     }
   } else {
     // Send new ping
     this.ping();
     this.timeouts = 0;
-    // console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' below threshold of ' + timoutThreshold + '.');
+    // console.log(this.id + '/' + this.user.nickname + ': ms since last pong:' + lastAlive + ' below threshold of ' + timeoutThreshold + '.');
   }
   return true;
 }

@@ -1,7 +1,7 @@
 {
-  "name": "websocket_server",
-  "version": "1.0.0",
-  "description": "Just a very basic websocket server, bare bones to in order to be easy to manipulate and use for diffrent things.",
+  "name": "webrtcChatServer",
+  "version": "0.1.0",
+  "description": "Basic chat server, with irc like functionality.",
   "main": "server.js",
   "dependencies": {
     "dotenv": "^16.0.1",
@@ -20,18 +20,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AndreasGrip/Websocket_server.git"
+    "url": "git+https://github.com/AndreasGrip/webrtcChatServer.git"
   },
   "keywords": [
     "websocket",
     "ws",
     "websocket-server",
-    "ws-server"
+    "ws-server",
+    "webrtcChatServer",
+    "webrtcChat-Server"
   ],
   "author": "Andreas Grip",
   "license": "GPL-3.0-or-later",
   "bugs": {
-    "url": "https://github.com/AndreasGrip/Websocket_server/issues"
+    "url": "https://github.com/AndreasGrip/webrtcChatServer/issues"
   },
-  "homepage": "https://github.com/AndreasGrip/Websocket_server#readme"
+  "homepage": "https://github.com/AndreasGrip/webrtcChatServer#readme"
 }
