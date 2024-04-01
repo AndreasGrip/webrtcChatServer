@@ -12,6 +12,11 @@ function objCopy(obj) {
   return o;
 }
 
+// Check if a returned object (is most likely) an error.
+let isError = (e) => {
+  return e && e.stack && e.message && typeof e.stack === 'string' && typeof e.message === 'string';
+};
+
 // default server settings
 const serverSettings = {
   serverName: 'Template server based on https://github.com/AndreasGrip/Websocket_server',
@@ -22,7 +27,7 @@ logger.debug('serverSettings: ' + JSON.stringify(serverSettings));
 
 // default ws settings (port should be changed)
 const wssettings = {
-  port: 8080,
+  port: process.env?.PORT ? process.env.PORT : 8080,
   perMessageDeflate: {
     zlibDeflateOptions: {
       // See zlib defaults.
@@ -47,6 +52,7 @@ logger.debug('wssettings: ' + JSON.stringify(wssettings));
 
 class chatserver {
   constructor(settings = {}) {
+    // Setting default serverSettings if they are not defined.
     if (!settings?.serverSettings) settings.serverSettings = serverSettings;
   }
 }
@@ -59,14 +65,26 @@ const users = new g_users();
 wss.users = users;
 
 wss.clientsArray = [];
+wss.channels = {};
 
-const channels = [];
+class channelUser {
+  constructor(user) {
+    this.user = user;
+    this.admin = false; // can change mode of other users ()
+    this.protected = false; // can't be banned or demoted (by other than owner)
+    this.voice = false;
+    this.banProtected = false;
+  }
+}
 
 class channel {
-  constructor(name, owner) {
+  constructor(name, creator, topic = '') {
     this.name = name;
-    this.owner = owner;
-    this.topic = '';
+    this.owner = creator;
+    this.users = [];
+    this.usersBanned = [];
+    // TODO? add banned adresses?
+    this.topic = topic;
     //https://www.unrealircd.org/docs/Channel_modes
     this.modes = {
       inviteonly: false, // only people invited can join
@@ -76,7 +94,54 @@ class channel {
       private: false, // Private channel. Partially conceals the existence of the channel. Users cannot see this channel name unless they are a member of it. For example, if you WHOIS a user who is on a +p channel, this channel is omitted from the response
       regonly: true, // Only registered users may join the channel. Registered users are users authenticated t
     };
-    this.users = [];
+    this.join(creator);
+  }
+  kick(kicker, kicked) {
+    const kickerUser = this.users.find(kicker);
+    if (!kickerUser) return new Error('Kicker User not in channel');
+    if (!kickerUser.admin) return new Error("Kicker User is not admin and can't kick");
+    const kickedUser = this.users.find(kicked);
+    if (!kickerUser) return new Error('Kicker User not in channel');
+    //TODO inform user that hes been kicked.
+    this.rmUser(kicked);
+    this.kicked.channels.slice(this.kicked.channels.find(this), 1);
+  }
+  join(user) {
+    if (this.usersBanned.includes(user)) return new Error('You is banned');
+    if (this.users.find((u) => u.user === user)) return new Error('You have already joined channer this.name');
+    this.addUser(user);
+  }
+  addUser(user) {
+    const newUser = new channelUser(user);
+    this.users.push(newUser);
+    user.channels.push(this);
+    const message = `user ${user.user.nickname} joined.`;
+    this.info(message);
+  }
+  rmUser(user) {
+    // find the pointer of the correct user object
+    const foundUser = this.users.filter((u) => (u.user = user));
+    if (!foundUser) return new Error('User not found');
+    // find the index of the pointer and then slice it out. (remove it)
+    this.users.slice(this.users.indexOf(foundUser), 1);
+    const message = `user ${user.nickname} left #${this.name}.`;
+    this.info(message);
+  }
+  chanMessage(message) {
+    this.send(message);
+  }
+  // give information to everyone in channel about channel event.
+  info(message) {
+    this.send(message);
+    logger.info(message);
+  }
+  // send data to everyone in channel
+  send(message) {
+    this.users.forEach((client) => {
+      if (client.user.readyState === WebSocket.OPEN) {
+        client.user.send(`#${this.name} ${message}`);
+      }
+    });
   }
 }
 
@@ -99,6 +164,7 @@ function connection(ws) {
   ws.wss = this; // this will not be available for internal functions, so attach it to ws.
   ws.allClients = this.clients;
   ws.allClientsArray = this.clientsArray;
+  ws.channels = []; // Channes the user is present in.
   this.clientsArray.push(ws);
   ws.pingpong = pingpong; // custom function
   this.timeouts = 0;
@@ -126,6 +192,7 @@ function onMessage(message) {
   }
   if (command) {
     switch (command) {
+      // TODO: this should be removed or limited
       case 'broadcast':
         this.allClients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
@@ -135,13 +202,34 @@ function onMessage(message) {
         break;
 
       case 'msg':
-        const destUserName = argumentsList.shift();
-        const destUser = this.allClientsArray.filter((c) => c.user.nickname === destUserName);
-        if (destUser.length > 0) {
-          destUser.forEach((user) => user.send(`@${this.user.nickname}: ${argumentsList.join(' ')}`));
-          //this.send(`${destUserName}: ${argumentsList.join(' ')}`);
+        let destination = argumentsList.shift();
+        if (destination.slice(0, 1) === '#') {
+          destination = destination.slice(1)
+          if (this.channels && this.channels.find(c => c.name === destination)) {
+            let destChannel = this.channels.find(c => c.name === destination);
+            if(!destChannel.voice || (destChannel.voice && (destChannel.users.find(c => c.user === this).voice || destChannel.users.find(c => c.user === this).admin))) {
+              destChannel.chanMessage(`@${this.user.nickname}: ${argumentsList.join(' ')}`);              
+            } else {
+              this.send(`Not enought permissions to msg #${destChannel} `)
+            }
+          } else this.send(`You are not in channel #${destination}`);
         } else {
-          this.send(`No user called '${destUserName}' is not connected.`);
+          const destUser = this.allClientsArray.filter((c) => c.user.nickname === destination);
+          if (destUser.length > 0) {
+            destUser.forEach((user) => user.send(`@${this.user.nickname}: ${argumentsList.join(' ')}`));
+            //this.send(`${destination}: ${argumentsList.join(' ')}`);
+          } else {
+            this.send(`No user called '${destination}' is not connected.`);
+          }
+        }
+        break;
+      case 'join':
+        const destChannel = argumentsList.shift();
+        if (this.wss.channels[destChannel]) {
+          const channelJoin = this.wss.channels[destChannel].join(this);
+          if (isError(channelJoin)) this.send(channelJoin.message);
+        } else {
+          this.wss.channels[destChannel] = new channel(destChannel, this, arguments);
         }
         break;
       case 'login':

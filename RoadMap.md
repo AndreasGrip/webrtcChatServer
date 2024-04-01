@@ -10,6 +10,6 @@
 ## 1.0
 &check; Debug logging.  
 &cross; Process can run multiple servers  
-&cross; Channel support  
+&check; Channel support  
 &cross; Direct message support (over server)  
 
