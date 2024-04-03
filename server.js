@@ -104,7 +104,8 @@ class channel {
     if (!kickerUser) return new Error('Kicker User not in channel');
     //TODO inform user that hes been kicked.
     this.rmUser(kicked);
-    this.kicked.channels.slice(this.kicked.channels.find(this), 1);
+    kicked.channels.slice(kicked.channels.find(this), 1);
+    logger.debug(`${this.name}: ${kicker.name} kicked ${kicked.name} `)
   }
   join(user) {
     if (this.usersBanned.includes(user)) return new Error('You is banned');
