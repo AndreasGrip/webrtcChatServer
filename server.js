@@ -95,6 +95,7 @@ class channel {
       regonly: true, // Only registered users may join the channel. Registered users are users authenticated t
     };
     this.join(creator);
+    logger.debug(`Channel ${this.name} created by ${creator.user.name}`)
   }
   kick(kicker, kicked) {
     const kickerUser = this.users.find(kicker);
@@ -111,6 +112,7 @@ class channel {
     if (this.usersBanned.includes(user)) return new Error('You is banned');
     if (this.users.find((u) => u.user === user)) return new Error('You have already joined channer this.name');
     this.addUser(user);
+    logger.debug(`${user.user.name} joined ${this.name}`)
   }
   addUser(user) {
     const newUser = new channelUser(user);
